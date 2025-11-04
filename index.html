@@ -1,41 +1,175 @@
-
 <!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>팀 리포트</title>
+  <title>팀 리포트 (CSV/엑셀 읽기)</title>
   <style>
-    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; margin: 40px; background: #fafafa; }
-    h1 { color: #333; }
-    .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-    canvas { width: 100%; height: 300px; }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 28px; background:#fafafa; }
+    h1 { margin-bottom: 12px; }
+    .toolbar { display:flex; gap:8px; align-items:center; margin: 10px 0 18px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+    .note { color:#666; font-size: 13px; margin-top:6px; }
+    table { width:100%; border-collapse: collapse; margin-top:14px; font-size:14px; }
+    th, td { border: 1px solid #eee; padding: 8px 10px; text-align:left; }
+    th { background:#f7f7f7; }
+    canvas { width:100%; height:320px; }
+    input[type="text"]{ padding:8px 10px; border-radius:8px; border:1px solid #ddd; width:360px; max-width:90vw; }
+    button{ padding:8px 12px; border:1px solid #ddd; background:#fff; border-radius:10px; cursor:pointer }
+    button:hover{ background:#f3f4f6 }
   </style>
 </head>
 <body>
   <h1>팀 리포트</h1>
+
+  <div class="toolbar">
+    <input id="url" type="text" value="./data/sample.csv" />
+    <button id="load">불러오기</button>
+    <span class="note">예) <code>./data/sample.csv</code> 또는 <code>./data/sample.xlsx</code></span>
+  </div>
+
   <div class="card">
     <canvas id="chart"></canvas>
   </div>
 
-  <!-- Chart.js (CDN) -->
+  <div class="card" style="margin-top:14px">
+    <strong>원본 데이터(상위 20행)</strong>
+    <div id="table"></div>
+  </div>
+
+  <!-- 라이브러리: Chart.js, PapaParse(CSV), SheetJS(XLSX) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <script>
-    const ctx = document.getElementById('chart');
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: ['1월', '2월', '3월', '4월', '5월'],
-        datasets: [{
-          label: '매출(단위: 백만)',
-          data: [12, 19, 3, 5, 9],
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'bottom' } }
+    const urlInput = document.getElementById('url');
+    const loadBtn  = document.getElementById('load');
+    const ctx      = document.getElementById('chart');
+    let chart;
+
+    loadBtn.addEventListener('click', () => loadAndRender(urlInput.value.trim()));
+    // 첫 로드
+    loadAndRender(urlInput.value.trim());
+
+    async function loadAndRender(DATA_URL){
+      try {
+        const ext = DATA_URL.toLowerCase().split('?')[0].split('.').pop();
+        let rows;
+
+        if(ext === 'csv'){
+          rows = await loadCSV(DATA_URL);
+        } else if (ext === 'xlsx' || ext === 'xls'){
+          rows = await loadXLSX(DATA_URL);
+        } else {
+          alert('지원하지 않는 확장자입니다. csv 또는 xlsx를 사용하세요.');
+          return;
+        }
+
+        // 컬럼 이름 유연 처리 (영/한 가능)
+        const dateKey  = findKey(rows[0], ['date','날짜','Date','DATE']);
+        const valueKey = findKey(rows[0], ['value','값','Value','VALUE','매출','실적']);
+
+        if(!dateKey || !valueKey){
+          alert('헤더(첫 행)에 날짜/값 컬럼이 필요합니다. 예: date, value');
+          return;
+        }
+
+        // 데이터 정리
+        const labels = [];
+        const values = [];
+        rows.forEach(r => {
+          const d = (r[dateKey] ?? '').toString().trim();
+          const v = Number((r[valueKey] ?? '').toString().replace(/,/g,''));
+          if(d && !isNaN(v)) {
+            labels.push(d);
+            values.push(v);
+          }
+        });
+
+        // 차트 렌더
+        renderChart(labels, values);
+
+        // 표 보여주기(상위 20행)
+        renderTable(rows.slice(0,20));
+      } catch (e) {
+        console.error(e);
+        alert('불러오는 중 오류가 발생했습니다. 콘솔을 확인하세요.');
       }
-    });
+    }
+
+    function findKey(obj, candidates){
+      if(!obj) return null;
+      const keys = Object.keys(obj);
+      for(const c of candidates){
+        const k = keys.find(x => x.trim().toLowerCase() === c.toLowerCase());
+        if(k) return k;
+      }
+      return null;
+    }
+
+    function renderChart(labels, values){
+      if(chart){ chart.destroy(); }
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{ label: '값', data: values, tension: .3, fill: false }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            y: { ticks: { callback: v => numberWithCommas(v) } }
+          }
+        }
+      });
+    }
+
+    function renderTable(rows){
+      const wrap = document.getElementById('table');
+      if(!rows?.length){ wrap.innerHTML = '<p class="note">표시할 데이터가 없습니다.</p>'; return; }
+      const headers = Object.keys(rows[0]);
+      let html = '<table><thead><tr>';
+      html += headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+      html += '</tr></thead><tbody>';
+      for(const r of rows){
+        html += '<tr>';
+        html += headers.map(h => `<td>${escapeHtml(r[h] ?? '')}</td>`).join('');
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
+    async function loadCSV(url){
+      const res = await fetch(url, { cache: 'no-store' });
+      const text = await res.text();                       // CSV는 UTF-8 권장
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      return parsed.data; // [{date:'2025-10-01', value:'120'}, ...]
+    }
+
+    async function loadXLSX(url){
+      const res = await fetch(url, { cache: 'no-store' });
+      const ab  = await res.arrayBuffer();
+      const wb  = XLSX.read(ab, { type: 'array' });
+      const firstSheet = wb.SheetNames[0];
+      const ws  = wb.Sheets[firstSheet];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }); // [{date:..., value:...}, ...]
+      return rows;
+    }
+
+    function numberWithCommas(x){
+      const n = Number(x);
+      return isNaN(n) ? x : n.toLocaleString();
+    }
+    function escapeHtml(s){
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;');
+    }
   </script>
 </body>
 </html>
+
