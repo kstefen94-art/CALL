@@ -1,0 +1,41 @@
+
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>팀 리포트</title>
+  <style>
+    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; margin: 40px; background: #fafafa; }
+    h1 { color: #333; }
+    .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+    canvas { width: 100%; height: 300px; }
+  </style>
+</head>
+<body>
+  <h1>팀 리포트</h1>
+  <div class="card">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const ctx = document.getElementById('chart');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['1월', '2월', '3월', '4월', '5월'],
+        datasets: [{
+          label: '매출(단위: 백만)',
+          data: [12, 19, 3, 5, 9],
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  </script>
+</body>
+</html>
